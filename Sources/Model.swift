@@ -113,41 +113,56 @@ final class Model: ObservableObject {
             alert = AlertInfo(title: "读不了这张图片", message: url.lastPathComponent)
             return
         }
+        // 先真正设上图标，设不上就什么都不改，免得列表里记着一个没生效的图标
+        do {
+            try Icons.apply(imageAt: url.path, to: app)
+        } catch Icons.Failure.denied {
+            alert = .permission
+            return
+        } catch {
+            alert = AlertInfo(title: "设置图标失败", message: error.localizedDescription)
+            return
+        }
         let ext = url.pathExtension.isEmpty ? "png" : url.pathExtension.lowercased()
         let fileName = iconFileName(for: app, ext: ext)
         do {
             try fm.createDirectory(at: Store.iconsDir, withIntermediateDirectories: true)
-            // 先读进内存再删旧副本，选的就是旧副本本身也不怕
-            if let old = entries.first(where: { $0.app == app }), old.iconIsManagedCopy {
-                try? fm.removeItem(atPath: old.iconPath)
-            }
+            // 已经读进内存，选的就是旧副本本身也不怕；旧副本可能是唯一的一份，进废纸篓而不是直接删
+            if let old = entries.first(where: { $0.app == app }) { trashManagedCopy(old) }
             try data.write(to: Store.iconsDir.appendingPathComponent(fileName))
         } catch {
-            alert = AlertInfo(title: "保存图标失败", message: error.localizedDescription)
+            alert = AlertInfo(title: "保存图标副本失败", message: error.localizedDescription)
             return
         }
-        let entry = Entry(app: app, icon: fileName)
-        upsert(entry)
-        guard persist() else { return }
-        apply(entry, logging: "已设置图标")
+        upsert(Entry(app: app, icon: fileName))
+        persist()
+        Store.log("已设置图标: \(app)")
+        Icons.refreshDock()
+        refresh()
     }
 
     // MARK: 移除
 
     func remove(_ entry: Entry, restoreOriginal: Bool) {
-        entries.removeAll { $0.app == entry.app }
-        // 先存列表，后台就不会再把图标补回去
-        guard persist() else { return }
-        if entry.iconIsManagedCopy { try? fm.removeItem(atPath: entry.iconPath) }
+        // 先清掉图标，清不掉就保持原样。后台检查会等 20 秒再读列表，赶得上下面把它移出列表
         if restoreOriginal, fm.fileExists(atPath: entry.app) {
-            if Icons.restoreOriginal(entry.app) {
-                Store.log("已恢复原图标: \(entry.app)")
-                Icons.refreshDock()
-            } else {
+            guard Icons.restoreOriginal(entry.app) else {
                 alert = .permission
+                return
             }
+            Store.log("已恢复原图标: \(entry.app)")
+            Icons.refreshDock()
         }
+        entries.removeAll { $0.app == entry.app }
+        persist()
+        trashManagedCopy(entry)
         refresh()
+    }
+
+    /// icons/ 里的副本可能是这个图标唯一的一份（比如导入来的），只移进废纸篓
+    private func trashManagedCopy(_ entry: Entry) {
+        guard entry.iconIsManagedCopy, fm.fileExists(atPath: entry.iconPath) else { return }
+        try? fm.trashItem(at: URL(fileURLWithPath: entry.iconPath), resultingItemURL: nil)
     }
 
     // MARK: 全部重新应用
@@ -248,26 +263,19 @@ final class Model: ObservableObject {
         return true
     }
 
-    private func apply(_ entry: Entry, logging verb: String) {
-        do {
-            try Icons.apply(entry)
-            Store.log("\(verb): \(entry.app)")
-            Icons.refreshDock()
-        } catch Icons.Failure.denied {
-            alert = .permission
-        } catch {
-            alert = AlertInfo(title: "设置图标失败", message: error.localizedDescription)
-        }
-        refresh()
-    }
-
-    /// icons/ 里给这个 app 用的文件名；同名文件被别的 app 占用时加编号（磁盘不分大小写）
+    /// icons/ 里给这个 app 用的文件名。被别的 app 占用、或磁盘上已有不属于它的同名文件时加编号，
+    /// 绝不覆盖别的文件（磁盘不分大小写）
     private func iconFileName(for app: String, ext: String) -> String {
         let base = ((app as NSString).lastPathComponent as NSString).deletingPathExtension
+        let own = entries.first { $0.app == app }?.icon.lowercased()
         let taken = Set(entries.filter { $0.app != app }.map { $0.icon.lowercased() })
+        func occupied(_ name: String) -> Bool {
+            taken.contains(name.lowercased())
+                || (name.lowercased() != own && fm.fileExists(atPath: Store.iconsDir.appendingPathComponent(name).path))
+        }
         var name = "\(base).\(ext)"
         var number = 2
-        while taken.contains(name.lowercased()) {
+        while occupied(name) {
             name = "\(base) \(number).\(ext)"
             number += 1
         }

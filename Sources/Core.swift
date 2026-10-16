@@ -82,8 +82,12 @@ enum Icons {
     }
 
     static func apply(_ entry: Entry) throws {
-        guard let image = NSImage(contentsOfFile: entry.iconPath) else { throw Failure.unreadableImage(entry.iconPath) }
-        guard NSWorkspace.shared.setIcon(image, forFile: entry.app, options: []) else { throw Failure.denied }
+        try apply(imageAt: entry.iconPath, to: entry.app)
+    }
+
+    static func apply(imageAt path: String, to app: String) throws {
+        guard let image = NSImage(contentsOfFile: path) else { throw Failure.unreadableImage(path) }
+        guard NSWorkspace.shared.setIcon(image, forFile: app, options: []) else { throw Failure.denied }
     }
 
     static func restoreOriginal(_ app: String) -> Bool {
