@@ -49,8 +49,14 @@ final class Model: ObservableObject {
 
     init() {
         entries = Config.load()
-        // 每次打开都按当前 app 位置和列表校准一次后台守护
-        Agent.sync(entries)
+        if Agent.appLocationOK {
+            // 每次打开都按当前 app 位置和列表校准一次后台守护
+            Agent.sync(entries)
+        } else {
+            alert = AlertInfo(
+                title: "请先把 IconKeeper 拖进「应用程序」文件夹",
+                message: "后台守护会记住 IconKeeper 的位置。放进「应用程序」文件夹后再打开，App 更新后才能自动补回图标。")
+        }
         refresh()
     }
 

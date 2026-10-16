@@ -1,0 +1,38 @@
+# 推送 v* 标签：编译打包并发布 Release；手动运行：只把成品上传成 Actions 构件
+name: 打包
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 编译打包
+        env:
+          ICONKEEPER_SIGN_IDENTITY: "-"
+          ICONKEEPER_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+        run: ./build.sh --package
+
+      - name: 上传构件
+        uses: actions/upload-artifact@v4
+        with:
+          name: IconKeeper
+          path: |
+            .build/IconKeeper.dmg
+            .build/IconKeeper.zip
+
+      - name: 发布 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" .build/IconKeeper.dmg .build/IconKeeper.zip \
+            --title "IconKeeper ${GITHUB_REF_NAME#v}" --notes-file .github/release-notes.md

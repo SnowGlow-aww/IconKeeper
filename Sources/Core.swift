@@ -130,9 +130,18 @@ enum Agent {
 
     static var loaded: Bool { run("/bin/launchctl", ["print", target]) == 0 }
 
+    /// 后台守护要记住 IconKeeper 的位置，必须装在「应用程序」里。
+    /// 从下载目录直接打开时系统会把 App 搬到随机的临时路径（App Translocation），不能指向那里
+    static var appLocationOK: Bool {
+        let path = Bundle.main.bundlePath
+        return !path.contains("/AppTranslocation/")
+            && (path.hasPrefix("/Applications/") || path.hasPrefix(Store.home.path + "/Applications/"))
+    }
+
     /// 按当前列表写好 plist，内容有变或没在运行才重新加载
     @discardableResult
     static func sync(_ entries: [Entry]) -> Bool {
+        guard appLocationOK else { return false }
         let plist: [String: Any] = [
             "Label": label,
             "ProgramArguments": [Bundle.main.executablePath ?? "/Applications/IconKeeper.app/Contents/MacOS/IconKeeper", "--check"],

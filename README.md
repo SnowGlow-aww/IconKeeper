@@ -22,10 +22,25 @@ IconKeeper 记下每个 App 该用哪张图标，在后台盯着这些 App，图
 
 ## 要求
 
-- macOS 14 及以上
-- Xcode Command Line Tools（`xcode-select --install`），不需要完整的 Xcode
+macOS 14 及以上，Apple 芯片和 Intel 都支持。
 
 ## 安装
+
+### 下载
+
+到 [Releases](https://github.com/SnowGlow-aww/IconKeeper/releases) 下载 `IconKeeper.dmg`，把 IconKeeper 拖进「应用程序」文件夹，放进去之后再打开（后台守护会记住它的位置）。
+
+Release 里的版本没有经过苹果公证，第一次打开会被拦下：到 **系统设置 › 隐私与安全性**，在页面下方点「仍要打开」；或者在终端运行
+
+```sh
+xattr -dr com.apple.quarantine /Applications/IconKeeper.app
+```
+
+Release 版本是临时签名的，每次升级后都要在「App 管理」里把 IconKeeper 删掉再重新添加；不想这样可以自己编译（见下面的「签名与重新编译」）。
+
+### 从源码编译
+
+需要 Xcode Command Line Tools（`xcode-select --install`），不需要完整的 Xcode。
 
 ```sh
 git clone https://github.com/SnowGlow-aww/IconKeeper.git
@@ -33,7 +48,7 @@ cd IconKeeper
 ./build.sh
 ```
 
-`build.sh` 会编译、签名，装到 `/Applications/IconKeeper.app`，并写好后台守护。
+`build.sh` 会编译通用二进制、签名，装到 `/Applications/IconKeeper.app`，并写好后台守护。`./build.sh --package` 只打包出 `IconKeeper.zip` 和 `IconKeeper.dmg`、不安装，GitHub Actions 就是用它出 Release 的：推送 `v*` 标签会自动发布。
 
 ### 授权「App 管理」
 
